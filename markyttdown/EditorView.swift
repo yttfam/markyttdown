@@ -61,7 +61,7 @@ struct EditorView: NSViewRepresentable {
             if let owner = parent.sync.owner, owner == ObjectIdentifier(self) { return }
             suppressNotification = true
             ScrollSyncHelper.apply(progress: parent.sync.progress, to: sv)
-            DispatchQueue.main.async { [weak self] in self?.suppressNotification = false }
+            Task { @MainActor [weak self] in self?.suppressNotification = false }
         }
     }
 }

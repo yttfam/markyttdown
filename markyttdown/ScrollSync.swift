@@ -13,6 +13,7 @@ extension Comparable {
     }
 }
 
+@MainActor
 enum ScrollSyncHelper {
     static func progress(of sv: NSScrollView) -> Double {
         guard let doc = sv.documentView else { return 0 }
