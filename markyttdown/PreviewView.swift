@@ -15,6 +15,7 @@ struct PreviewView: NSViewRepresentable {
         scroll.contentView.postsBoundsChangedNotifications = true
 
         let host = NSHostingView(rootView: PreviewContent(text: text))
+        host.sizingOptions = [.intrinsicContentSize]
         host.translatesAutoresizingMaskIntoConstraints = false
         scroll.documentView = host
         NSLayoutConstraint.activate([
@@ -97,9 +98,15 @@ private struct ImageBlock: View {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
-                        ProgressView().controlSize(.small)
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(height: 40)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     case .success(let image):
-                        image.resizable().scaledToFit()
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     case .failure:
                         placeholder
                     @unknown default:
@@ -109,12 +116,12 @@ private struct ImageBlock: View {
             } else if let url, url.isFileURL, let nsi = NSImage(contentsOf: url) {
                 Image(nsImage: nsi)
                     .resizable()
-                    .scaledToFit()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 placeholder
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var placeholder: some View {
