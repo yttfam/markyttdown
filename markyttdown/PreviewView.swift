@@ -1,16 +1,77 @@
 import SwiftUI
+import AppKit
 import Markdown
 
-struct PreviewView: View {
+struct PreviewView: NSViewRepresentable {
     let text: String
+    @ObservedObject var sync: ScrollSync
 
-    var body: some View {
-        ScrollView {
-            Text(MarkdownRenderer.render(text))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        scroll.contentView.postsBoundsChangedNotifications = true
+
+        let host = NSHostingView(rootView: PreviewContent(text: text))
+        host.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = host
+        NSLayoutConstraint.activate([
+            host.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+            host.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
+            host.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+        ])
+
+        context.coordinator.scrollView = scroll
+        context.coordinator.host = host
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.boundsChanged(_:)),
+            name: NSView.boundsDidChangeNotification,
+            object: scroll.contentView
+        )
+        return scroll
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        context.coordinator.host?.rootView = PreviewContent(text: text)
+        context.coordinator.applyExternalSync()
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        let parent: PreviewView
+        weak var scrollView: NSScrollView?
+        weak var host: NSHostingView<PreviewContent>?
+        private var suppressNotification = false
+
+        init(_ parent: PreviewView) { self.parent = parent }
+
+        @objc func boundsChanged(_ note: Notification) {
+            guard !suppressNotification, let sv = scrollView else { return }
+            let p = ScrollSyncHelper.progress(of: sv)
+            parent.sync.owner = ObjectIdentifier(self)
+            parent.sync.progress = p
         }
+
+        func applyExternalSync() {
+            guard let sv = scrollView else { return }
+            if let owner = parent.sync.owner, owner == ObjectIdentifier(self) { return }
+            suppressNotification = true
+            ScrollSyncHelper.apply(progress: parent.sync.progress, to: sv)
+            DispatchQueue.main.async { [weak self] in self?.suppressNotification = false }
+        }
+    }
+}
+
+struct PreviewContent: View {
+    let text: String
+    var body: some View {
+        Text(MarkdownRenderer.render(text))
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
     }
 }
 
@@ -37,9 +98,7 @@ enum MarkdownRenderer {
             appendBlock(s, into: &out)
         case let q as BlockQuote:
             var inner = AttributedString()
-            for child in q.children {
-                renderBlock(child, into: &inner)
-            }
+            for child in q.children { renderBlock(child, into: &inner) }
             inner.foregroundColor = .secondary
             appendBlock(inner, into: &out)
         case let list as UnorderedList:
@@ -51,16 +110,12 @@ enum MarkdownRenderer {
             s.foregroundColor = .secondary
             appendBlock(s, into: &out)
         default:
-            for child in node.children {
-                renderBlock(child, into: &out)
-            }
+            for child in node.children { renderBlock(child, into: &out) }
         }
     }
 
     private static func appendBlock(_ s: AttributedString, into out: inout AttributedString) {
-        if !out.characters.isEmpty {
-            out.append(AttributedString("\n\n"))
-        }
+        if !out.characters.isEmpty { out.append(AttributedString("\n\n")) }
         out.append(s)
     }
 

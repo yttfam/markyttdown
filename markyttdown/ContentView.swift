@@ -14,20 +14,21 @@ struct ContentView: View {
     @Binding var document: MarkdownDocument
     @AppStorage("layoutMode") private var layoutMode: LayoutMode = .toggle
     @AppStorage("editorPane") private var editorPane: EditorPane = .editor
+    @StateObject private var sync = ScrollSync()
 
     var body: some View {
         Group {
             switch layoutMode {
             case .toggle:
                 switch editorPane {
-                case .editor:  EditorView(text: $document.text)
-                case .preview: PreviewView(text: document.text)
+                case .editor:  EditorView(text: $document.text, sync: sync)
+                case .preview: PreviewView(text: document.text, sync: sync)
                 }
             case .split:
                 HSplitView {
-                    EditorView(text: $document.text)
+                    EditorView(text: $document.text, sync: sync)
                         .frame(minWidth: 240)
-                    PreviewView(text: document.text)
+                    PreviewView(text: document.text, sync: sync)
                         .frame(minWidth: 240)
                 }
             }
