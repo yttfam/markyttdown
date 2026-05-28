@@ -2,67 +2,96 @@ import SwiftUI
 import AppKit
 import Markdown
 
-struct PreviewView: NSViewRepresentable {
+struct PreviewView: View {
     let text: String
     @ObservedObject var sync: ScrollSync
+    @StateObject private var bridge = PreviewScrollBridge()
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
-        scroll.hasVerticalScroller = true
-        scroll.drawsBackground = false
-        scroll.contentView.postsBoundsChangedNotifications = true
-
-        let host = NSHostingView(rootView: PreviewContent(text: text))
-        host.sizingOptions = [.intrinsicContentSize]
-        host.translatesAutoresizingMaskIntoConstraints = false
-        scroll.documentView = host
-        NSLayoutConstraint.activate([
-            host.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-            host.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
-            host.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
-        ])
-
-        context.coordinator.scrollView = scroll
-        context.coordinator.host = host
-        NotificationCenter.default.addObserver(
-            context.coordinator,
-            selector: #selector(Coordinator.boundsChanged(_:)),
-            name: NSView.boundsDidChangeNotification,
-            object: scroll.contentView
+    var body: some View {
+        ScrollView(.vertical) {
+            PreviewContent(text: text)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+        }
+        .background(
+            ScrollViewProbe { sv in
+                bridge.attach(scrollView: sv, sync: sync)
+            }
         )
-        return scroll
+        .onChange(of: sync.progress) { _, _ in
+            bridge.applyExternalSync()
+        }
+    }
+}
+
+@MainActor
+final class PreviewScrollBridge: ObservableObject {
+    private weak var scrollView: NSScrollView?
+    private weak var sync: ScrollSync?
+    private var observer: NSObjectProtocol?
+    private var suppress = false
+
+    func attach(scrollView: NSScrollView, sync: ScrollSync) {
+        guard self.scrollView !== scrollView else {
+            self.sync = sync
+            return
+        }
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+        self.scrollView = scrollView
+        self.sync = sync
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        observer = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.boundsChanged() }
+        }
     }
 
-    func updateNSView(_ nsView: NSScrollView, context: Context) {
-        context.coordinator.host?.rootView = PreviewContent(text: text)
-        context.coordinator.applyExternalSync()
+    private func boundsChanged() {
+        guard !suppress, let sv = scrollView, let sync else { return }
+        let p = ScrollSyncHelper.progress(of: sv)
+        sync.owner = ObjectIdentifier(self)
+        sync.progress = p
     }
 
-    @MainActor
-    final class Coordinator: NSObject {
-        let parent: PreviewView
-        weak var scrollView: NSScrollView?
-        weak var host: NSHostingView<PreviewContent>?
-        private var suppressNotification = false
+    func applyExternalSync() {
+        guard let sv = scrollView, let sync else { return }
+        if let owner = sync.owner, owner == ObjectIdentifier(self) { return }
+        suppress = true
+        ScrollSyncHelper.apply(progress: sync.progress, to: sv)
+        Task { @MainActor [weak self] in self?.suppress = false }
+    }
+}
 
-        init(_ parent: PreviewView) { self.parent = parent }
+private struct ScrollViewProbe: NSViewRepresentable {
+    let onFound: (NSScrollView) -> Void
 
-        @objc func boundsChanged(_ note: Notification) {
-            guard !suppressNotification, let sv = scrollView else { return }
-            let p = ScrollSyncHelper.progress(of: sv)
-            parent.sync.owner = ObjectIdentifier(self)
-            parent.sync.progress = p
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView(frame: .zero)
+        v.translatesAutoresizingMaskIntoConstraints = false
+        DispatchQueue.main.async { resolve(v) }
+        return v
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { resolve(nsView) }
+    }
+
+    private func resolve(_ view: NSView) {
+        if let sv = nearestScrollView(from: view) {
+            onFound(sv)
         }
+    }
 
-        func applyExternalSync() {
-            guard let sv = scrollView else { return }
-            if let owner = parent.sync.owner, owner == ObjectIdentifier(self) { return }
-            suppressNotification = true
-            ScrollSyncHelper.apply(progress: parent.sync.progress, to: sv)
-            Task { @MainActor [weak self] in self?.suppressNotification = false }
+    private func nearestScrollView(from view: NSView) -> NSScrollView? {
+        var p: NSView? = view.superview
+        while let cur = p {
+            if let sv = cur as? NSScrollView { return sv }
+            p = cur.superview
         }
+        return nil
     }
 }
 
@@ -83,8 +112,6 @@ struct PreviewContent: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
     }
 }
 
@@ -127,6 +154,7 @@ private struct ImageBlock: View {
     private var placeholder: some View {
         Text("🖼 " + (alt.isEmpty ? (url?.absoluteString ?? "image") : alt))
             .foregroundColor(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -329,7 +357,7 @@ enum MarkdownRenderer {
         case 1: return .system(size: 28, weight: .bold)
         case 2: return .system(size: 22, weight: .bold)
         case 3: return .system(size: 18, weight: .semibold)
-        case 4: return .system(size: 16, weight: .semibold)
+        case 4: return .system(size: 14, weight: .semibold)
         case 5: return .system(size: 14, weight: .semibold)
         default: return .system(size: 13, weight: .semibold)
         }
