@@ -1,0 +1,53 @@
+name: markyttdown
+options:
+  bundleIdPrefix: net.calii
+  deploymentTarget:
+    macOS: "14.0"
+  developmentLanguage: en
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: XJQQCN392F
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: "0.1.0"
+    GENERATE_INFOPLIST_FILE: NO
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_ENTITLEMENTS: markyttdown/markyttdown.entitlements
+
+packages:
+  Markdown:
+    url: https://github.com/apple/swift-markdown
+    from: "0.5.0"
+
+targets:
+  markyttdown:
+    type: application
+    platform: macOS
+    sources:
+      - markyttdown
+    dependencies:
+      - package: Markdown
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.calii.markyttdown
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: markyttdown/Info.plist
+        COMBINE_HIDPI_IMAGES: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+
+  markyttdownTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - markyttdownTests
+    dependencies:
+      - target: markyttdown
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.calii.markyttdownTests
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/markyttdown.app/Contents/MacOS/markyttdown"

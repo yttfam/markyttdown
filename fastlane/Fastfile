@@ -1,0 +1,151 @@
+# Fastfile for markyttdown (macOS native)
+# Lanes: test, bump_build, bump_marketing, release
+#
+# POLICY:
+#   - CURRENT_PROJECT_VERSION (build number) is auto-bumped per release commit.
+#     Source of truth = highest build across published GitHub Releases on this
+#     repo, queried via `gh api`. +1 each release. If no releases exist, 1.
+#   - MARKETING_VERSION is Cali-only. Touched only via `bump_marketing`, which
+#     is invoked on demand (never by CI on its own).
+
+default_platform(:mac)
+
+PROJECT_YML     = File.expand_path("../project.yml", __dir__)
+XCODEPROJ       = File.expand_path("../markyttdown.xcodeproj", __dir__)
+APP_IDENTIFIER  = "net.calii.markyttdown"
+SCHEME          = "markyttdown"
+TEAM_ID         = "XJQQCN392F"
+GH_REPO         = ENV["GH_REPO"] || "yttfam/markyttdown"
+
+def current_build_number_from_file
+  m = File.read(PROJECT_YML).match(/^\s*CURRENT_PROJECT_VERSION:\s*(\d+)\s*$/)
+  m ? m[1].to_i : nil
+end
+
+def current_marketing_from_file
+  m = File.read(PROJECT_YML).match(/^\s*MARKETING_VERSION:\s*"([^"]+)"\s*$/)
+  m ? m[1] : nil
+end
+
+def patch_build_number_in_yaml(new_value)
+  content = File.read(PROJECT_YML)
+  prev = nil
+  updated = content.sub(/^(\s*CURRENT_PROJECT_VERSION:\s*)(\d+)\s*$/) do
+    prev = Regexp.last_match(2).to_i
+    "#{Regexp.last_match(1)}#{new_value}"
+  end
+  raise "CURRENT_PROJECT_VERSION not found in #{PROJECT_YML}" if prev.nil?
+  File.write(PROJECT_YML, updated)
+  prev
+end
+
+def patch_marketing_in_yaml(new_value)
+  content = File.read(PROJECT_YML)
+  prev = nil
+  updated = content.sub(/^(\s*MARKETING_VERSION:\s*)"([^"]+)"\s*$/) do
+    prev = Regexp.last_match(2)
+    "#{Regexp.last_match(1)}\"#{new_value}\""
+  end
+  raise "MARKETING_VERSION not found in #{PROJECT_YML}" if prev.nil?
+  File.write(PROJECT_YML, updated)
+  prev
+end
+
+def latest_release_build_number
+  # Highest build across all published GitHub Releases. The build number is
+  # embedded in the asset filename: markyttdown-<version>-<build>.{dmg,pkg}.
+  out = `gh api repos/#{GH_REPO}/releases --paginate 2>/dev/null`
+  return 0 if out.nil? || out.empty?
+  builds = out.scan(/markyttdown-[\d.]+-(\d+)\.(?:dmg|pkg)/).flatten.map(&:to_i)
+  builds.max || 0
+rescue
+  0
+end
+
+platform :mac do
+  desc "Run unit tests"
+  lane :test do
+    Dir.chdir(File.expand_path("..", __dir__)) do
+      sh("/opt/homebrew/bin/xcodegen", "generate")
+    end
+    run_tests(
+      project: XCODEPROJ,
+      scheme: SCHEME,
+      destination: "platform=macOS",
+      xcargs: "CODE_SIGNING_ALLOWED=NO"
+    )
+  end
+
+  desc "Set CURRENT_PROJECT_VERSION = latest GitHub Release build + 1."
+  lane :bump_build do
+    latest  = latest_release_build_number
+    current = current_build_number_from_file || 0
+    new_value = [latest, current].max + 1
+    patch_build_number_in_yaml(new_value)
+    Dir.chdir(File.expand_path("..", __dir__)) { sh("/opt/homebrew/bin/xcodegen", "generate") }
+    ENV["BUILD_NUMBER"] = new_value.to_s
+    UI.success("Build number: GH releases max=#{latest}, project.yml prev=#{current}, new=#{new_value}")
+    new_value
+  end
+
+  desc "Bump MARKETING_VERSION. Usage: fastlane bump_marketing component:major|minor|patch"
+  lane :bump_marketing do |options|
+    component = (options[:component] || "patch").to_s
+    raise "component must be one of major|minor|patch" unless %w[major minor patch].include?(component)
+    current = current_marketing_from_file or UI.user_error!("MARKETING_VERSION not found")
+    parts = current.split(".").map(&:to_i)
+    parts.fill(0, parts.length..2)
+    case component
+    when "major" then parts[0] += 1; parts[1] = 0; parts[2] = 0
+    when "minor" then parts[1] += 1; parts[2] = 0
+    when "patch" then parts[2] += 1
+    end
+    new_value = parts.join(".")
+    patch_marketing_in_yaml(new_value)
+    Dir.chdir(File.expand_path("..", __dir__)) { sh("/opt/homebrew/bin/xcodegen", "generate") }
+    UI.success("Marketing version: #{current} -> #{new_value}")
+  end
+
+  desc "Build, sign, notarize, staple, produce .app + .dmg + .pkg"
+  lane :release do
+    bump_build
+
+    identities = `security find-identity -v -p codesigning`
+    unless identities.include?("Developer ID Application")
+      UI.user_error!("No 'Developer ID Application' identity in keychain")
+    end
+    unless `security find-identity -v`.include?("Developer ID Installer")
+      UI.user_error!("No 'Developer ID Installer' identity in keychain")
+    end
+
+    Dir.chdir(File.expand_path("..", __dir__)) { sh("/opt/homebrew/bin/xcodegen", "generate") }
+
+    build_app(
+      project: XCODEPROJ,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "developer-id",
+      output_directory: "build",
+      output_name: "markyttdown",
+      clean: true,
+      skip_package_dependencies_resolution: false,
+      xcargs: "-allowProvisioningUpdates DEVELOPMENT_TEAM=#{TEAM_ID}",
+      export_options: {
+        method: "developer-id",
+        teamID: TEAM_ID,
+        signingStyle: "automatic"
+      }
+    )
+
+    marketing = current_marketing_from_file
+    build     = ENV["BUILD_NUMBER"]
+
+    Dir.chdir(File.expand_path("..", __dir__)) do
+      sh("./scripts/notarize.sh", "build/markyttdown.app")
+      sh("./scripts/make_dmg.sh", "build/markyttdown.app", "build/markyttdown-#{marketing}-#{build}.dmg")
+      sh("./scripts/make_pkg.sh", "build/markyttdown.app", "build/markyttdown-#{marketing}-#{build}.pkg")
+    end
+
+    UI.success("Release artefacts in ./build/: .app, .dmg, .pkg (signed + notarized + stapled)")
+  end
+end

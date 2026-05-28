@@ -1,0 +1,70 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or commit to release"
+        required: false
+        default: "main"
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      ASC_KEY_ID:       ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID:    ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8:       ${{ secrets.ASC_KEY_P8 }}
+      DEV_ID_APP_P12:   ${{ secrets.DEV_ID_APP_P12 }}
+      DEV_ID_APP_PASS:  ${{ secrets.DEV_ID_APP_PASS }}
+      DEV_ID_INST_P12:  ${{ secrets.DEV_ID_INST_P12 }}
+      DEV_ID_INST_PASS: ${{ secrets.DEV_ID_INST_PASS }}
+      APPLE_ID_APP_PWD: ${{ secrets.APPLE_ID_APP_PWD }}
+      GH_REPO: ${{ github.repository }}
+      FASTLANE_SKIP_GIT: "true"
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Install xcodegen + create-dmg
+        run: brew install xcodegen create-dmg
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Import certs into ephemeral keychain
+        run: ./scripts/import-certs.sh
+
+      - name: Build, sign, notarize, package
+        run: bundle exec fastlane mac release
+
+      - name: List artefacts
+        run: ls -lah build/
+
+      - name: Determine version
+        id: ver
+        run: |
+          MARKETING=$(grep -E '^\s*MARKETING_VERSION:' project.yml | sed -E 's/.*"([^"]+)".*/\1/')
+          BUILD=$(grep -E '^\s*CURRENT_PROJECT_VERSION:' project.yml | awk '{print $2}')
+          echo "marketing=$MARKETING" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "tag=v${MARKETING}-${BUILD}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: markyttdown ${{ steps.ver.outputs.marketing }} (build ${{ steps.ver.outputs.build }})
+          generate_release_notes: true
+          files: |
+            build/markyttdown-${{ steps.ver.outputs.marketing }}-${{ steps.ver.outputs.build }}.dmg
+            build/markyttdown-${{ steps.ver.outputs.marketing }}-${{ steps.ver.outputs.build }}.pkg
