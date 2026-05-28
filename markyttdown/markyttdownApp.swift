@@ -11,7 +11,7 @@ struct MarkyttdownApp: App {
 
     var body: some Scene {
         DocumentGroup(newDocument: MarkdownDocument()) { file in
-            ContentView(document: file.$document)
+            ContentView(document: file.$document, baseURL: file.fileURL)
         }
         .commands {
             CommandGroup(after: .appInfo) {
@@ -21,10 +21,25 @@ struct MarkyttdownApp: App {
                     }
                 }
             }
+            CommandGroup(replacing: .printItem) {
+                PrintCommands()
+            }
             CommandGroup(after: .toolbar) {
                 LayoutCommands()
             }
         }
+    }
+}
+
+private struct PrintCommands: View {
+    @FocusedValue(\.printRequest) private var request: PrintRequest?
+
+    var body: some View {
+        Button("Print…") {
+            if let request { PreviewPrinter.run(request) }
+        }
+        .keyboardShortcut("p", modifiers: .command)
+        .disabled(request == nil)
     }
 }
 

@@ -4,12 +4,13 @@ import Markdown
 
 struct PreviewView: View {
     let text: String
+    let baseURL: URL?
     @ObservedObject var sync: ScrollSync
     @StateObject private var bridge = PreviewScrollBridge()
 
     var body: some View {
         ScrollView(.vertical) {
-            PreviewContent(text: text)
+            PreviewContent(text: text, baseURL: baseURL)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
         }
@@ -97,6 +98,7 @@ private struct ScrollViewProbe: NSViewRepresentable {
 
 struct PreviewContent: View {
     let text: String
+    let baseURL: URL?
 
     var body: some View {
         let blocks = MarkdownRenderer.renderBlocks(text)
@@ -108,11 +110,19 @@ struct PreviewContent: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 case .image(let url, let alt):
-                    ImageBlock(url: url, alt: alt)
+                    ImageBlock(url: resolveImageURL(url, base: baseURL), alt: alt)
                 }
             }
         }
     }
+}
+
+private func resolveImageURL(_ url: URL?, base: URL?) -> URL? {
+    guard let url else { return nil }
+    if url.scheme != nil { return url }
+    guard let base else { return nil }
+    let dir = base.deletingLastPathComponent()
+    return URL(fileURLWithPath: url.absoluteString, relativeTo: dir).standardizedFileURL
 }
 
 private struct ImageBlock: View {

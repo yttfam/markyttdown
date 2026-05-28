@@ -12,6 +12,7 @@ enum EditorPane: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @Binding var document: MarkdownDocument
+    let baseURL: URL?
     @AppStorage("layoutMode") private var layoutMode: LayoutMode = .toggle
     @AppStorage("editorPane") private var editorPane: EditorPane = .editor
     @StateObject private var sync = ScrollSync()
@@ -22,19 +23,20 @@ struct ContentView: View {
             case .toggle:
                 switch editorPane {
                 case .editor:  EditorView(text: $document.text, sync: sync)
-                case .preview: PreviewView(text: document.text, sync: sync)
+                case .preview: PreviewView(text: document.text, baseURL: baseURL, sync: sync)
                 }
             case .split:
                 HSplitView {
                     EditorView(text: $document.text, sync: sync)
                         .frame(minWidth: 240)
-                    PreviewView(text: document.text, sync: sync)
+                    PreviewView(text: document.text, baseURL: baseURL, sync: sync)
                         .frame(minWidth: 240)
                 }
             }
         }
         .frame(minWidth: 600, minHeight: 400)
         .toolbar { toolbarContent }
+        .focusedSceneValue(\.printRequest, PrintRequest(text: document.text, baseURL: baseURL))
     }
 
     @ToolbarContentBuilder
