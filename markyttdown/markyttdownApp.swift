@@ -3,11 +3,24 @@ import UniformTypeIdentifiers
 
 @main
 struct MarkyttdownApp: App {
+    init() {
+        Task { @MainActor in
+            await UpdateChecker.shared.checkSilentlyIfDue()
+        }
+    }
+
     var body: some Scene {
         DocumentGroup(newDocument: MarkdownDocument()) { file in
             ContentView(document: file.$document)
         }
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    Task { @MainActor in
+                        await UpdateChecker.shared.checkManually()
+                    }
+                }
+            }
             CommandGroup(after: .toolbar) {
                 LayoutCommands()
             }
