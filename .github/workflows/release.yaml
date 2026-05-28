@@ -24,6 +24,7 @@ jobs:
       DEV_ID_INST_PASS: ${{ secrets.DEV_ID_INST_PASS }}
       APPLE_ID_APP_PWD: ${{ secrets.APPLE_ID_APP_PWD }}
       GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       FASTLANE_SKIP_GIT: "true"
       CI: "true"
     steps:

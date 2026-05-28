@@ -25,12 +25,12 @@ ASC_ISSUER_ID="$(field infra/apple-asc issuer_id)"
 ASC_KEY_P8="$(field infra/apple-asc key_p8)"
 
 DEV_ID_APP_P12="$(field infra/apple-cert-developer-id-application p12_base64)"
-DEV_ID_APP_PASS="$(field infra/apple-cert-developer-id-application password)"
+DEV_ID_APP_PASS="$(field infra/apple-cert-developer-id-application p12_password)"
 
 DEV_ID_INST_P12="$(field infra/apple-cert-developer-id-installer p12_base64)"
-DEV_ID_INST_PASS="$(field infra/apple-cert-developer-id-installer password)"
+DEV_ID_INST_PASS="$(field infra/apple-cert-developer-id-installer p12_password)"
 
-APPLE_ID_APP_PWD="$(field infra/apple-id-app-password password)"
+APPLE_ID_APP_PWD="$(field infra/apple-id-app-password app_password)"
 
 echo ">> Pushing to GitHub: $REPO"
 set_secret ASC_KEY_ID        "$ASC_KEY_ID"

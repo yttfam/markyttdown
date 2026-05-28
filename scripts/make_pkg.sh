@@ -7,15 +7,17 @@ APP="${1:?usage: make_pkg.sh <app> <pkg>}"
 PKG="${2:?usage: make_pkg.sh <app> <pkg>}"
 
 UNSIGNED="$(mktemp -d)/unsigned.pkg"
+VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")"
 
 productbuild \
   --component "$APP" /Applications \
   --identifier "net.calii.markyttdown" \
-  --version "$(defaults read "$(pwd)/$APP/Contents/Info" CFBundleShortVersionString)" \
+  --version "$VERSION" \
   "$UNSIGNED"
 
-echo ">> Signing $PKG with Developer ID Installer"
-productsign --sign "Developer ID Installer" "$UNSIGNED" "$PKG"
+SIGN_ID="${DEV_ID_INSTALLER_IDENTITY:-Developer ID Installer: Nico Bousquet (XJQQCN392F)}"
+echo ">> Signing $PKG with $SIGN_ID"
+productsign --sign "$SIGN_ID" "$UNSIGNED" "$PKG"
 pkgutil --check-signature "$PKG"
 
 echo ">> Notarizing $PKG"

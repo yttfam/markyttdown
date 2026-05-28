@@ -29,7 +29,8 @@ else
 fi
 
 echo ">> Signing $DMG"
-codesign --force --sign "Developer ID Application" --timestamp "$DMG"
+SIGN_ID="${DEV_ID_APP_IDENTITY:-Developer ID Application: Nico Bousquet (XJQQCN392F)}"
+codesign --force --sign "$SIGN_ID" --timestamp "$DMG"
 
 echo ">> Notarizing $DMG"
 "$(dirname "$0")/notarize.sh" "$DMG"
