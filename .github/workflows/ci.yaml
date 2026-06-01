@@ -6,7 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  unit:
+    name: Unit + integration tests
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,5 +18,20 @@ jobs:
         with:
           ruby-version: "3.3"
           bundler-cache: true
-      - name: Build & test
+      - name: Run unit + integration tests
         run: bundle exec fastlane mac test
+
+  ui:
+    name: XCUITest end-to-end
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - name: Run XCUITest end-to-end tests
+        run: bundle exec fastlane mac ui_test

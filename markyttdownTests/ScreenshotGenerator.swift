@@ -1,19 +1,13 @@
 import XCTest
-import SwiftUI
 import AppKit
 @testable import markyttdown
 
-/// Renders demo PNGs of the live preview into ../docs/screenshots/ via
-/// SwiftUI's offscreen ImageRenderer. Run explicitly to refresh README
-/// assets; ignored by the default test suite via the `GENERATE_SCREENSHOTS`
-/// env var.
-///
-/// Usage:
-///   GENERATE_SCREENSHOTS=1 xcodebuild ... test -only-testing:markyttdownTests/ScreenshotGenerator
+/// Renders demo PNGs of the live preview / editor / split view into
+/// ../docs/screenshots/. Uses NSTextView (the same view the app ships with),
+/// then bitmap-snapshots it offscreen — so the snapshot matches the runtime
+/// pixel-for-pixel.
 @MainActor
 final class ScreenshotGenerator: XCTestCase {
-    /// Runs as part of the normal test suite. Always (re)writes PNG snapshots
-    /// into ../docs/screenshots/ relative to this source file.
     func testGenerateScreenshots() throws {
         let projectRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // markyttdownTests/
@@ -21,65 +15,127 @@ final class ScreenshotGenerator: XCTestCase {
         let outDir = projectRoot.appendingPathComponent("docs/screenshots")
         try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
-        let sample = sampleMarkdown
-
         try writePNG(
-            view: PreviewContent(text: sample, baseURL: nil)
-                .frame(width: 720)
-                .padding(.vertical, 8)
-                .background(Color(NSColor.textBackgroundColor)),
-            width: 720,
+            snapshot: previewSnapshot(width: 720),
             to: outDir.appendingPathComponent("preview.png")
         )
 
         try writePNG(
-            view: EditorMockup(text: sample)
-                .frame(width: 720)
-                .background(Color(NSColor.textBackgroundColor)),
-            width: 720,
+            snapshot: editorSnapshot(width: 720),
             to: outDir.appendingPathComponent("editor.png")
         )
 
         try writePNG(
-            view: HStack(spacing: 1) {
-                EditorMockup(text: sample)
-                    .frame(width: 460)
-                    .background(Color(NSColor.textBackgroundColor))
-                Color(NSColor.separatorColor).frame(width: 1)
-                PreviewContent(text: sample, baseURL: nil)
-                    .frame(width: 460)
-                    .padding(.vertical, 8)
-                    .background(Color(NSColor.textBackgroundColor))
-            }
-            .frame(width: 921),
-            width: 921,
+            snapshot: splitSnapshot(width: 921, editorWidth: 460, previewWidth: 460),
             to: outDir.appendingPathComponent("split.png")
         )
     }
 
-    private func writePNG<V: View>(view: V, width: CGFloat, to url: URL) throws {
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = 2 // retina
-        renderer.proposedSize = ProposedViewSize(width: width, height: nil)
-        guard let nsImage = renderer.nsImage,
-              let tiff = nsImage.tiffRepresentation,
+    // MARK: - Snapshots
+
+    private func previewSnapshot(width: CGFloat) -> NSImage {
+        let tv = configuredPreviewTextView(width: width)
+        return renderToImage(tv)
+    }
+
+    private func editorSnapshot(width: CGFloat) -> NSImage {
+        let tv = configuredEditorTextView(width: width)
+        return renderToImage(tv)
+    }
+
+    private func splitSnapshot(width: CGFloat,
+                               editorWidth: CGFloat,
+                               previewWidth: CGFloat) -> NSImage {
+        let editor = configuredEditorTextView(width: editorWidth)
+        let preview = configuredPreviewTextView(width: previewWidth)
+        let editorImage = renderToImage(editor)
+        let previewImage = renderToImage(preview)
+        let height = max(editorImage.size.height, previewImage.size.height)
+        let composed = NSImage(size: NSSize(width: width, height: height))
+        composed.lockFocus()
+        NSColor.textBackgroundColor.setFill()
+        NSRect(origin: .zero, size: composed.size).fill()
+        editorImage.draw(at: .zero,
+                         from: NSRect(origin: .zero, size: editorImage.size),
+                         operation: .sourceOver,
+                         fraction: 1)
+        previewImage.draw(at: NSPoint(x: width - previewWidth, y: 0),
+                          from: NSRect(origin: .zero, size: previewImage.size),
+                          operation: .sourceOver,
+                          fraction: 1)
+        NSColor.separatorColor.setFill()
+        NSRect(x: editorWidth, y: 0, width: 1, height: height).fill()
+        composed.unlockFocus()
+        return composed
+    }
+
+    private func configuredPreviewTextView(width: CGFloat) -> NSTextView {
+        let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 1))
+        tv.isEditable = false
+        tv.isSelectable = false
+        tv.isHorizontallyResizable = false
+        tv.isVerticallyResizable = true
+        tv.textContainerInset = NSSize(width: 16, height: 16)
+        tv.textContainer?.widthTracksTextView = true
+        tv.textContainer?.size = NSSize(width: width, height: .greatestFiniteMagnitude)
+        let attr = NSAttributedMarkdown.render(sampleMarkdown, baseURL: nil)
+        tv.textStorage?.setAttributedString(attr)
+        sizeToFit(tv, width: width)
+        return tv
+    }
+
+    private func configuredEditorTextView(width: CGFloat) -> NSTextView {
+        let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 1))
+        tv.isEditable = false
+        tv.isSelectable = false
+        tv.isHorizontallyResizable = false
+        tv.isVerticallyResizable = true
+        tv.textContainerInset = NSSize(width: 16, height: 16)
+        tv.textContainer?.widthTracksTextView = true
+        tv.textContainer?.size = NSSize(width: width, height: .greatestFiniteMagnitude)
+        tv.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        tv.string = sampleMarkdown
+        sizeToFit(tv, width: width)
+        return tv
+    }
+
+    /// NSTextView needs to be in a window for the layout manager to actually
+    /// run glyph generation. Park it in an offscreen window long enough to
+    /// measure used rect, then detach.
+    private func sizeToFit(_ tv: NSTextView, width: CGFloat) {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: width, height: 2000),
+            styleMask: [],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = tv
+        tv.layoutManager?.ensureLayout(for: tv.textContainer!)
+        let used = tv.layoutManager?.usedRect(for: tv.textContainer!).height ?? 0
+        let inset = tv.textContainerInset.height * 2
+        tv.frame = NSRect(x: 0, y: 0, width: width, height: used + inset)
+        tv.removeFromSuperview()
+        _ = window
+    }
+
+    private func renderToImage(_ view: NSView) -> NSImage {
+        let bounds = view.bounds
+        let rep = view.bitmapImageRepForCachingDisplay(in: bounds)!
+        view.cacheDisplay(in: bounds, to: rep)
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(rep)
+        return image
+    }
+
+    private func writePNG(snapshot: NSImage, to url: URL) throws {
+        guard let tiff = snapshot.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiff),
               let png = bitmap.representation(using: .png, properties: [:])
         else {
-            XCTFail("Failed to render \(url.lastPathComponent)")
+            XCTFail("Failed to encode PNG for \(url.lastPathComponent)")
             return
         }
         try png.write(to: url)
-    }
-}
-
-private struct EditorMockup: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(.system(.body, design: .monospaced))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
     }
 }
 
@@ -100,7 +156,7 @@ A tiny native macOS markdown editor. Part of the **YTT family**.
 
 ### Code
 
-```swift
+```
 let app = Markyttdown()
 app.run()
 ```

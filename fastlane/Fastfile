@@ -63,7 +63,7 @@ rescue
 end
 
 platform :mac do
-  desc "Run unit tests"
+  desc "Run unit tests (excludes XCUITest target — needs ui_test lane)"
   lane :test do
     Dir.chdir(File.expand_path("..", __dir__)) do
       sh("/opt/homebrew/bin/xcodegen", "generate")
@@ -72,6 +72,21 @@ platform :mac do
       project: XCODEPROJ,
       scheme: SCHEME,
       destination: "platform=macOS",
+      only_testing: ["markyttdownTests"],
+      xcargs: "CODE_SIGNING_ALLOWED=NO"
+    )
+  end
+
+  desc "Run XCUITest end-to-end tests (needs Automation permission grant locally)"
+  lane :ui_test do
+    Dir.chdir(File.expand_path("..", __dir__)) do
+      sh("/opt/homebrew/bin/xcodegen", "generate")
+    end
+    run_tests(
+      project: XCODEPROJ,
+      scheme: SCHEME,
+      destination: "platform=macOS",
+      only_testing: ["markyttdownUITests"],
       xcargs: "CODE_SIGNING_ALLOWED=NO"
     )
   end
