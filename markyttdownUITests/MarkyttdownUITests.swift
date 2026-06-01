@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 
 /// End-to-end UI smoke tests for the markyttdown macOS app. These exercise
 /// the launched binary, not the in-process code, and therefore prove that
@@ -60,17 +61,30 @@ final class MarkyttdownUITests: XCTestCase {
         let window = app.windows.firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 10))
 
-        let editor = window.textViews.firstMatch
-        XCTAssertTrue(editor.waitForExistence(timeout: 5),
-                      "Expected an editor text view in the document window")
-        editor.click()
-        let sample = "ui-test-marker-123"
-        editor.typeText(sample)
+        // Click into the window's content area to focus the editor without
+        // relying on the editor exposing a specific accessibility element type
+        // (which varies across Xcode releases for SwiftUI-wrapped NSTextView).
+        window.click()
+        let sample = "ui-test-marker-\(UUID().uuidString.prefix(8))"
+        app.typeText(String(sample))
 
-        // The editor's accessibility value reflects its current string.
-        let value = editor.value as? String ?? ""
-        XCTAssertTrue(value.contains(sample),
-                      "Expected typed text to appear in editor; got: \(value)")
+        // Round-trip via the system pasteboard: ⌘A → ⌘C → read.
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        app.typeKey("a", modifierFlags: .command)
+        app.typeKey("c", modifierFlags: .command)
+
+        let exp = expectation(description: "pasteboard reflects typed input")
+        let deadline = Date().addingTimeInterval(3)
+        DispatchQueue.global().async {
+            while Date() < deadline {
+                if let s = pb.string(forType: .string), s.contains(String(sample)) {
+                    exp.fulfill(); return
+                }
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+        }
+        wait(for: [exp], timeout: 5)
     }
 
     func testPreviewPaneSwitchKeyboardShortcut() {
