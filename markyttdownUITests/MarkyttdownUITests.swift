@@ -4,6 +4,7 @@ import XCTest
 /// the launched binary, not the in-process code, and therefore prove that
 /// menus, commands, layout switching and document plumbing all wire up
 /// correctly through SwiftUI / AppKit.
+@MainActor
 final class MarkyttdownUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
