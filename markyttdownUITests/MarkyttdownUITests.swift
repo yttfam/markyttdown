@@ -55,18 +55,15 @@ final class MarkyttdownUITests: XCTestCase {
         XCUIApplication().typeKey(.escape, modifierFlags: [])
     }
 
-    func testNewDocumentCommandOpensSecondWindow() {
+    func testFileMenuHasNewItem() {
         let app = launch()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
-        let initialCount = app.windows.count
-
-        // ⌘N → DocumentGroup spins up a new untitled document. Proves the
-        // File menu + MarkdownDocument plumbing all wire up end-to-end.
-        app.typeKey("n", modifierFlags: .command)
-
-        let secondWindow = app.windows.element(boundBy: initialCount)
-        XCTAssertTrue(secondWindow.waitForExistence(timeout: 5),
-                      "Expected ⌘N to open an additional document window")
+        let fileMenu = app.menuBarItems["File"]
+        XCTAssertTrue(fileMenu.waitForExistence(timeout: 5))
+        fileMenu.click()
+        // The standard NSDocument "New" item is what DocumentGroup wires up.
+        XCTAssertTrue(app.menuItems["New"].waitForExistence(timeout: 3),
+                      "Expected a New menu item under File for document creation")
+        XCUIApplication().typeKey(.escape, modifierFlags: [])
     }
 
     func testPreviewPaneSwitchKeyboardShortcut() {

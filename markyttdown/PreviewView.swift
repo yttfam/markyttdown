@@ -26,6 +26,7 @@ struct PreviewView: NSViewRepresentable {
         tv.textContainerInset = NSSize(width: 16, height: 16)
         tv.drawsBackground = false
         tv.allowsDocumentBackgroundColorChange = false
+        tv.delegate = context.coordinator
 
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -51,7 +52,7 @@ struct PreviewView: NSViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator: NSObject {
+    final class Coordinator: NSObject, NSTextViewDelegate {
         let parent: PreviewView
         weak var scrollView: NSScrollView?
         weak var textView: NSTextView?
@@ -106,6 +107,26 @@ struct PreviewView: NSViewRepresentable {
             suppressNotification = true
             ScrollSyncHelper.apply(progress: parent.sync.progress, to: sv)
             Task { @MainActor [weak self] in self?.suppressNotification = false }
+        }
+
+        // Open clicked links ourselves so .md sibling links route through our
+        // own NSDocumentController instead of whichever app owns .md by default.
+        func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            let url: URL?
+            if let u = link as? URL { url = u }
+            else if let s = link as? String, let u = URL(string: s) { url = u }
+            else { url = nil }
+            guard let url else { return false }
+
+            if url.isFileURL {
+                let ext = url.pathExtension.lowercased()
+                if ext == "md" || ext == "markdown" || ext == "mdown" {
+                    NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+                    return true
+                }
+            }
+            NSWorkspace.shared.open(url)
+            return true
         }
     }
 }

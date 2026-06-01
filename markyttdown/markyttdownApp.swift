@@ -4,6 +4,11 @@ import UniformTypeIdentifiers
 @main
 struct MarkyttdownApp: App {
     init() {
+        // Skip the launch-time GitHub poll under XCTest hosts and UI tests so
+        // the test runner can start cleanly and runs stay hermetic.
+        let isUnitTest = NSClassFromString("XCTestCase") != nil
+        let isUITest = ProcessInfo.processInfo.environment["MARKYTTDOWN_UI_TEST"] == "1"
+        guard !isUnitTest && !isUITest else { return }
         Task { @MainActor in
             await UpdateChecker.shared.checkSilentlyIfDue()
         }
