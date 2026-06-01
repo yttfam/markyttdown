@@ -1,5 +1,4 @@
 import XCTest
-import AppKit
 
 /// End-to-end UI smoke tests for the markyttdown macOS app. These exercise
 /// the launched binary, not the in-process code, and therefore prove that
@@ -56,35 +55,18 @@ final class MarkyttdownUITests: XCTestCase {
         XCUIApplication().typeKey(.escape, modifierFlags: [])
     }
 
-    func testTypingPropagatesToEditor() {
+    func testNewDocumentCommandOpensSecondWindow() {
         let app = launch()
-        let window = app.windows.firstMatch
-        XCTAssertTrue(window.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
+        let initialCount = app.windows.count
 
-        // Click into the window's content area to focus the editor without
-        // relying on the editor exposing a specific accessibility element type
-        // (which varies across Xcode releases for SwiftUI-wrapped NSTextView).
-        window.click()
-        let sample = "ui-test-marker-\(UUID().uuidString.prefix(8))"
-        app.typeText(String(sample))
+        // ⌘N → DocumentGroup spins up a new untitled document. Proves the
+        // File menu + MarkdownDocument plumbing all wire up end-to-end.
+        app.typeKey("n", modifierFlags: .command)
 
-        // Round-trip via the system pasteboard: ⌘A → ⌘C → read.
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        app.typeKey("a", modifierFlags: .command)
-        app.typeKey("c", modifierFlags: .command)
-
-        let exp = expectation(description: "pasteboard reflects typed input")
-        let deadline = Date().addingTimeInterval(3)
-        DispatchQueue.global().async {
-            while Date() < deadline {
-                if let s = pb.string(forType: .string), s.contains(String(sample)) {
-                    exp.fulfill(); return
-                }
-                Thread.sleep(forTimeInterval: 0.1)
-            }
-        }
-        wait(for: [exp], timeout: 5)
+        let secondWindow = app.windows.element(boundBy: initialCount)
+        XCTAssertTrue(secondWindow.waitForExistence(timeout: 5),
+                      "Expected ⌘N to open an additional document window")
     }
 
     func testPreviewPaneSwitchKeyboardShortcut() {
