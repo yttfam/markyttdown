@@ -13,10 +13,12 @@ enum NSAttributedMarkdown {
     /// Synchronous render. Local file images load inline; remote (http/https)
     /// images appear as a "Loading…" placeholder attachment carrying their URL
     /// in `.markyttdownImageURL` so a follow-up pass can swap them in.
-    static func render(_ source: String, baseURL: URL? = nil) -> NSAttributedString {
+    static func render(_ source: String,
+                       baseURL: URL? = nil,
+                       fontScale: Double = 1.0) -> NSAttributedString {
         let out = NSMutableAttributedString()
         let doc = Document(parsing: source)
-        let ctx = RenderContext(baseURL: baseURL)
+        let ctx = RenderContext(baseURL: baseURL, fontScale: fontScale)
         for child in doc.children {
             renderBlock(child, into: out, ctx: ctx)
         }
@@ -72,6 +74,7 @@ enum NSAttributedMarkdown {
 
     private struct RenderContext {
         let baseURL: URL?
+        let fontScale: Double
     }
 
     private static func renderBlock(_ node: any Markup,
@@ -80,7 +83,7 @@ enum NSAttributedMarkdown {
         switch node {
         case let h as Heading:
             let line = renderInlines(h,
-                                     baseFont: headingFont(level: h.level),
+                                     baseFont: headingFont(level: h.level, scale: ctx.fontScale),
                                      bold: true,
                                      ctx: ctx)
             appendBlock(line, into: out)
@@ -88,11 +91,11 @@ enum NSAttributedMarkdown {
             if p.children.contains(where: { $0 is Markdown.Image }) {
                 renderImageParagraph(p, into: out, ctx: ctx)
             } else {
-                appendBlock(renderInlines(p, ctx: ctx), into: out)
+                appendBlock(renderInlines(p, baseFont: bodyFont(ctx.fontScale), ctx: ctx), into: out)
             }
         case let code as CodeBlock:
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
+                .font: monoFont(ctx.fontScale),
                 .backgroundColor: NSColor.controlBackgroundColor,
                 .foregroundColor: NSColor.labelColor,
             ]
@@ -136,11 +139,11 @@ enum NSAttributedMarkdown {
             let bullet = ordered ? "\(idx). " : "•  "
             let line = NSMutableAttributedString(
                 string: bullet,
-                attributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize)]
+                attributes: [.font: bodyFont(ctx.fontScale)]
             )
             for child in item.children {
                 if let p = child as? Paragraph {
-                    line.append(renderInlines(p, ctx: ctx))
+                    line.append(renderInlines(p, baseFont: bodyFont(ctx.fontScale), ctx: ctx))
                 } else {
                     let sub = NSMutableAttributedString()
                     renderBlock(child, into: sub, ctx: ctx)
@@ -155,7 +158,7 @@ enum NSAttributedMarkdown {
     }
 
     private static func renderInlines(_ container: any Markup,
-                                      baseFont: NSFont = .systemFont(ofSize: NSFont.systemFontSize),
+                                      baseFont: NSFont,
                                       bold: Bool = false,
                                       ctx: RenderContext) -> NSAttributedString {
         let out = NSMutableAttributedString()
@@ -198,7 +201,7 @@ enum NSAttributedMarkdown {
             }
         case let ic as InlineCode:
             var attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
+                .font: monoFont(ctx.fontScale),
                 .backgroundColor: NSColor.controlBackgroundColor,
                 .foregroundColor: NSColor.labelColor,
             ]
@@ -245,7 +248,7 @@ enum NSAttributedMarkdown {
                 appendBlock(imageAttachment(img, ctx: ctx), into: out)
             } else {
                 renderInline(inline, into: scratch,
-                             baseFont: .systemFont(ofSize: NSFont.systemFontSize),
+                             baseFont: bodyFont(ctx.fontScale),
                              bold: false, italic: false, link: nil, ctx: ctx)
             }
         }
@@ -321,7 +324,7 @@ enum NSAttributedMarkdown {
         return NSFontManager.shared.convert(base, toHaveTrait: traits)
     }
 
-    private static func headingFont(level: Int) -> NSFont {
+    private static func headingFont(level: Int, scale: Double) -> NSFont {
         let size: CGFloat
         switch level {
         case 1: size = 28
@@ -331,7 +334,16 @@ enum NSAttributedMarkdown {
         case 5: size = 14
         default: size = 13
         }
-        return NSFont.systemFont(ofSize: size, weight: .bold)
+        return NSFont.systemFont(ofSize: size * CGFloat(scale), weight: .bold)
+    }
+
+    private static func bodyFont(_ scale: Double) -> NSFont {
+        NSFont.systemFont(ofSize: NSFont.systemFontSize * CGFloat(scale))
+    }
+
+    private static func monoFont(_ scale: Double) -> NSFont {
+        NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize * CGFloat(scale),
+                                    weight: .regular)
     }
 
     static func resolveURL(_ src: String, base: URL?) -> URL? {

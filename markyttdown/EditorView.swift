@@ -13,16 +13,15 @@ struct EditorView: NSViewRepresentable {
         let tv = scroll.documentView as! NSTextView
         tv.isRichText = false
         tv.allowsUndo = true
-        tv.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        tv.font = .monospacedSystemFont(
+            ofSize: NSFont.systemFontSize * CGFloat(zoom.level),
+            weight: .regular
+        )
         tv.textContainerInset = NSSize(width: 8, height: 8)
         tv.delegate = context.coordinator
         tv.string = text
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
-        scroll.allowsMagnification = true
-        scroll.minMagnification = CGFloat(Zoom.minLevel)
-        scroll.maxMagnification = CGFloat(Zoom.maxLevel)
-        scroll.magnification = CGFloat(zoom.level)
         scroll.contentView.postsBoundsChangedNotifications = true
         context.coordinator.scrollView = scroll
         NotificationCenter.default.addObserver(
@@ -35,12 +34,14 @@ struct EditorView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        if let tv = nsView.documentView as? NSTextView, tv.string != text {
-            tv.string = text
-        }
-        let target = CGFloat(zoom.level)
-        if abs(nsView.magnification - target) > 0.001 {
-            nsView.magnification = target
+        guard let tv = nsView.documentView as? NSTextView else { return }
+        if tv.string != text { tv.string = text }
+        let desired = NSFont.monospacedSystemFont(
+            ofSize: NSFont.systemFontSize * CGFloat(zoom.level),
+            weight: .regular
+        )
+        if tv.font?.pointSize != desired.pointSize {
+            tv.font = desired
         }
         context.coordinator.applyExternalSync()
     }

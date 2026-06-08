@@ -31,10 +31,6 @@ struct PreviewView: NSViewRepresentable {
 
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
-        scroll.allowsMagnification = true
-        scroll.minMagnification = CGFloat(Zoom.minLevel)
-        scroll.maxMagnification = CGFloat(Zoom.maxLevel)
-        scroll.magnification = CGFloat(zoom.level)
         scroll.contentView.postsBoundsChangedNotifications = true
 
         context.coordinator.scrollView = scroll
@@ -47,16 +43,12 @@ struct PreviewView: NSViewRepresentable {
             object: scroll.contentView
         )
 
-        context.coordinator.applyContent(text: text, baseURL: baseURL)
+        context.coordinator.applyContent(text: text, baseURL: baseURL, fontScale: zoom.level)
         return scroll
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        context.coordinator.applyContent(text: text, baseURL: baseURL)
-        let target = CGFloat(zoom.level)
-        if abs(nsView.magnification - target) > 0.001 {
-            nsView.magnification = target
-        }
+        context.coordinator.applyContent(text: text, baseURL: baseURL, fontScale: zoom.level)
         context.coordinator.applyExternalSync()
     }
 
@@ -68,16 +60,18 @@ struct PreviewView: NSViewRepresentable {
         private var suppressNotification = false
         private var lastSource: String?
         private var lastBaseURL: URL?
+        private var lastFontScale: Double = 0
         private var inFlight: Set<URL> = []
 
         init(_ parent: PreviewView) { self.parent = parent }
 
-        func applyContent(text: String, baseURL: URL?) {
-            if lastSource == text && lastBaseURL == baseURL { return }
+        func applyContent(text: String, baseURL: URL?, fontScale: Double) {
+            if lastSource == text && lastBaseURL == baseURL && lastFontScale == fontScale { return }
             lastSource = text
             lastBaseURL = baseURL
+            lastFontScale = fontScale
             guard let tv = textView, let storage = tv.textStorage else { return }
-            let rendered = NSAttributedMarkdown.render(text, baseURL: baseURL)
+            let rendered = NSAttributedMarkdown.render(text, baseURL: baseURL, fontScale: fontScale)
             storage.beginEditing()
             storage.setAttributedString(rendered)
             storage.endEditing()
