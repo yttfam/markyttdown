@@ -16,20 +16,21 @@ struct ContentView: View {
     @AppStorage("layoutMode") private var layoutMode: LayoutMode = .toggle
     @AppStorage("editorPane") private var editorPane: EditorPane = .editor
     @StateObject private var sync = ScrollSync()
+    @StateObject private var zoom = Zoom()
 
     var body: some View {
         Group {
             switch layoutMode {
             case .toggle:
                 switch editorPane {
-                case .editor:  EditorView(text: $document.text, sync: sync)
-                case .preview: PreviewView(text: document.text, baseURL: baseURL, sync: sync)
+                case .editor:  EditorView(text: $document.text, sync: sync, zoom: zoom)
+                case .preview: PreviewView(text: document.text, baseURL: baseURL, sync: sync, zoom: zoom)
                 }
             case .split:
                 HSplitView {
-                    EditorView(text: $document.text, sync: sync)
+                    EditorView(text: $document.text, sync: sync, zoom: zoom)
                         .frame(minWidth: 240)
-                    PreviewView(text: document.text, baseURL: baseURL, sync: sync)
+                    PreviewView(text: document.text, baseURL: baseURL, sync: sync, zoom: zoom)
                         .frame(minWidth: 240)
                 }
             }
@@ -37,6 +38,7 @@ struct ContentView: View {
         .frame(minWidth: 600, minHeight: 400)
         .toolbar { toolbarContent }
         .focusedSceneValue(\.printRequest, PrintRequest(text: document.text, baseURL: baseURL))
+        .focusedSceneValue(\.zoom, zoom)
     }
 
     @ToolbarContentBuilder

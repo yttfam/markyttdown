@@ -4,6 +4,7 @@ import AppKit
 struct EditorView: NSViewRepresentable {
     @Binding var text: String
     @ObservedObject var sync: ScrollSync
+    @ObservedObject var zoom: Zoom
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -18,6 +19,10 @@ struct EditorView: NSViewRepresentable {
         tv.string = text
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
+        scroll.allowsMagnification = true
+        scroll.minMagnification = CGFloat(Zoom.minLevel)
+        scroll.maxMagnification = CGFloat(Zoom.maxLevel)
+        scroll.magnification = CGFloat(zoom.level)
         scroll.contentView.postsBoundsChangedNotifications = true
         context.coordinator.scrollView = scroll
         NotificationCenter.default.addObserver(
@@ -32,6 +37,10 @@ struct EditorView: NSViewRepresentable {
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         if let tv = nsView.documentView as? NSTextView, tv.string != text {
             tv.string = text
+        }
+        let target = CGFloat(zoom.level)
+        if abs(nsView.magnification - target) > 0.001 {
+            nsView.magnification = target
         }
         context.coordinator.applyExternalSync()
     }

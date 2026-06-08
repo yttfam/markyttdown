@@ -31,8 +31,26 @@ struct MarkyttdownApp: App {
             }
             CommandGroup(after: .toolbar) {
                 LayoutCommands()
+                Divider()
+                ZoomCommands()
             }
         }
+    }
+}
+
+private struct ZoomCommands: View {
+    @FocusedValue(\.zoom) private var zoom: Zoom?
+
+    var body: some View {
+        Button("Zoom In")     { zoom?.zoomIn() }
+            .keyboardShortcut("+", modifiers: .command)
+            .disabled(zoom == nil)
+        Button("Zoom Out")    { zoom?.zoomOut() }
+            .keyboardShortcut("-", modifiers: .command)
+            .disabled(zoom == nil)
+        Button("Actual Size") { zoom?.actualSize() }
+            .keyboardShortcut("0", modifiers: .command)
+            .disabled(zoom == nil)
     }
 }
 

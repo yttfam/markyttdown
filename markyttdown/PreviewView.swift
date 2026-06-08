@@ -5,6 +5,7 @@ struct PreviewView: NSViewRepresentable {
     let text: String
     let baseURL: URL?
     @ObservedObject var sync: ScrollSync
+    @ObservedObject var zoom: Zoom
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -30,6 +31,10 @@ struct PreviewView: NSViewRepresentable {
 
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
+        scroll.allowsMagnification = true
+        scroll.minMagnification = CGFloat(Zoom.minLevel)
+        scroll.maxMagnification = CGFloat(Zoom.maxLevel)
+        scroll.magnification = CGFloat(zoom.level)
         scroll.contentView.postsBoundsChangedNotifications = true
 
         context.coordinator.scrollView = scroll
@@ -48,6 +53,10 @@ struct PreviewView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.applyContent(text: text, baseURL: baseURL)
+        let target = CGFloat(zoom.level)
+        if abs(nsView.magnification - target) > 0.001 {
+            nsView.magnification = target
+        }
         context.coordinator.applyExternalSync()
     }
 
