@@ -137,25 +137,45 @@ final class NSAttributedMarkdownTests: XCTestCase {
         | 4 | 5 | 6 |
         """
         let s = NSAttributedMarkdown.render(src)
-        XCTAssertTrue(s.string.contains("┌"))
-        XCTAssertTrue(s.string.contains("┘"))
-        XCTAssertTrue(s.string.contains("│ a │ b │ c │"))
-        XCTAssertTrue(s.string.contains("│ 1 │ 2 │ 3 │"))
-        XCTAssertTrue(s.string.contains("│ 4 │ 5 │ 6 │"))
-        // The whole table should be monospaced.
-        let font = s.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
-        XCTAssertTrue(font?.fontName.lowercased().contains("mono") ?? false)
+        let str = s.string
+        XCTAssertTrue(str.contains("a"))
+        XCTAssertTrue(str.contains("b"))
+        XCTAssertTrue(str.contains("c"))
+        XCTAssertTrue(str.contains("1"))
+        XCTAssertTrue(str.contains("6"))
     }
 
-    func testTablePadsColumnsToMaxWidth() {
+    func testTableAttachesNSTextBlockParagraphStyles() {
         let src = """
-        | name | role |
-        |------|------|
-        | very-long-name | x |
+        | a | b |
+        |---|---|
+        | 1 | 2 |
         """
         let s = NSAttributedMarkdown.render(src)
-        // "very-long-name" is 14 chars; header "name" is 4. Header row should be padded.
-        XCTAssertTrue(s.string.contains("│ name           │"))
+        var blockCount = 0
+        s.enumerateAttribute(.paragraphStyle,
+                             in: NSRange(location: 0, length: s.length)) { value, _, _ in
+            if let style = value as? NSParagraphStyle, !style.textBlocks.isEmpty {
+                blockCount += 1
+            }
+        }
+        // 2 cols × 2 rows (head + 1 body) = 4 cell paragraphs.
+        XCTAssertEqual(blockCount, 4)
+    }
+
+    func testTableHeaderRowIsSemibold() {
+        let src = """
+        | head |
+        |------|
+        | body |
+        """
+        let s = NSAttributedMarkdown.render(src)
+        let headRange = (s.string as NSString).range(of: "head")
+        XCTAssertGreaterThan(headRange.length, 0)
+        let font = s.attribute(.font, at: headRange.location, effectiveRange: nil) as? NSFont
+        XCTAssertNotNil(font)
+        XCTAssertTrue(NSFontManager.shared.weight(of: font!) >= 6,
+                      "Expected header weight ≥ semibold; got \(NSFontManager.shared.weight(of: font!))")
     }
 
     func testReplaceAttachment() {

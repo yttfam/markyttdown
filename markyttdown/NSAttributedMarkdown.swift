@@ -126,51 +126,65 @@ enum NSAttributedMarkdown {
 
     private static func renderTable(_ table: Markdown.Table,
                                     ctx: RenderContext) -> NSAttributedString {
-        let headCells: [String] = table.head.cells.map { collapseWhitespace($0.plainText) }
-        let bodyRows: [[String]] = table.body.rows.map { row in
-            Array(row.cells).map { collapseWhitespace($0.plainText) }
-        }
+        let headCells = Array(table.head.cells)
+        let bodyRows: [[Markdown.Table.Cell]] = table.body.rows.map { Array($0.cells) }
         let cols = max(headCells.count, bodyRows.map { $0.count }.max() ?? 0)
         guard cols > 0 else { return NSAttributedString() }
 
-        var widths = [Int](repeating: 0, count: cols)
-        for (i, c) in headCells.enumerated() { widths[i] = max(widths[i], c.count) }
-        for row in bodyRows {
-            for (i, c) in row.enumerated() { widths[i] = max(widths[i], c.count) }
-        }
+        let nsTable = NSTextTable()
+        nsTable.numberOfColumns = cols
+        nsTable.layoutAlgorithm = .automaticLayoutAlgorithm
+        nsTable.collapsesBorders = true
+        nsTable.hidesEmptyCells = false
 
-        func pad(_ s: String, to width: Int) -> String {
-            s + String(repeating: " ", count: max(0, width - s.count))
+        let out = NSMutableAttributedString()
+        appendTableRow(headCells, row: 0, isHeader: true,
+                       table: nsTable, cols: cols, into: out, ctx: ctx)
+        for (i, row) in bodyRows.enumerated() {
+            appendTableRow(row, row: i + 1, isHeader: false,
+                           table: nsTable, cols: cols, into: out, ctx: ctx)
         }
-        func renderRow(_ cells: [String]) -> String {
-            var padded: [String] = []
-            for i in 0..<cols {
-                let c = i < cells.count ? cells[i] : ""
-                padded.append(pad(c, to: widths[i]))
-            }
-            return "│ " + padded.joined(separator: " │ ") + " │"
-        }
-        let dashes = widths.map { String(repeating: "─", count: $0) }
-        let topBorder    = "┌─" + dashes.joined(separator: "─┬─") + "─┐"
-        let sepBorder    = "├─" + dashes.joined(separator: "─┼─") + "─┤"
-        let bottomBorder = "└─" + dashes.joined(separator: "─┴─") + "─┘"
-
-        var lines: [String] = [topBorder, renderRow(headCells), sepBorder]
-        for row in bodyRows { lines.append(renderRow(row)) }
-        lines.append(bottomBorder)
-
-        let str = lines.joined(separator: "\n")
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: monoFont(ctx.fontScale),
-            .foregroundColor: NSColor.labelColor,
-        ]
-        return NSAttributedString(string: str, attributes: attrs)
+        return out
     }
 
-    /// Cell plain text can contain wrapped whitespace from inline markup; collapse
-    /// to single spaces and trim so column widths line up cleanly.
-    private static func collapseWhitespace(_ s: String) -> String {
-        s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    private static func appendTableRow(_ cells: [Markdown.Table.Cell],
+                                       row: Int,
+                                       isHeader: Bool,
+                                       table: NSTextTable,
+                                       cols: Int,
+                                       into out: NSMutableAttributedString,
+                                       ctx: RenderContext) {
+        let baseFontSize = NSFont.systemFontSize * CGFloat(ctx.fontScale)
+        let cellFont: NSFont = isHeader
+            ? NSFont.systemFont(ofSize: baseFontSize, weight: .semibold)
+            : bodyFont(ctx.fontScale)
+
+        for c in 0..<cols {
+            let block = NSTextTableBlock(table: table,
+                                         startingRow: row, rowSpan: 1,
+                                         startingColumn: c, columnSpan: 1)
+            block.setBorderColor(NSColor.separatorColor)
+            block.setWidth(1, type: .absoluteValueType, for: .border)
+            block.setWidth(6, type: .absoluteValueType, for: .padding)
+            if isHeader {
+                block.backgroundColor = NSColor.controlBackgroundColor
+            }
+
+            let style = NSMutableParagraphStyle()
+            style.textBlocks = [block]
+
+            let cellAttr = NSMutableAttributedString()
+            if c < cells.count {
+                cellAttr.append(renderInlines(cells[c],
+                                              baseFont: cellFont,
+                                              bold: isHeader,
+                                              ctx: ctx))
+            }
+            cellAttr.append(NSAttributedString(string: "\n"))
+            cellAttr.addAttribute(.paragraphStyle, value: style,
+                                  range: NSRange(location: 0, length: cellAttr.length))
+            out.append(cellAttr)
+        }
     }
 
     private static func appendBlock(_ s: NSAttributedString,
