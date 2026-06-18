@@ -117,9 +117,60 @@ enum NSAttributedMarkdown {
                 attributes: [.foregroundColor: NSColor.tertiaryLabelColor]
             )
             appendBlock(rule, into: out)
+        case let table as Markdown.Table:
+            appendBlock(renderTable(table, ctx: ctx), into: out)
         default:
             for child in node.children { renderBlock(child, into: out, ctx: ctx) }
         }
+    }
+
+    private static func renderTable(_ table: Markdown.Table,
+                                    ctx: RenderContext) -> NSAttributedString {
+        let headCells: [String] = table.head.cells.map { collapseWhitespace($0.plainText) }
+        let bodyRows: [[String]] = table.body.rows.map { row in
+            Array(row.cells).map { collapseWhitespace($0.plainText) }
+        }
+        let cols = max(headCells.count, bodyRows.map { $0.count }.max() ?? 0)
+        guard cols > 0 else { return NSAttributedString() }
+
+        var widths = [Int](repeating: 0, count: cols)
+        for (i, c) in headCells.enumerated() { widths[i] = max(widths[i], c.count) }
+        for row in bodyRows {
+            for (i, c) in row.enumerated() { widths[i] = max(widths[i], c.count) }
+        }
+
+        func pad(_ s: String, to width: Int) -> String {
+            s + String(repeating: " ", count: max(0, width - s.count))
+        }
+        func renderRow(_ cells: [String]) -> String {
+            var padded: [String] = []
+            for i in 0..<cols {
+                let c = i < cells.count ? cells[i] : ""
+                padded.append(pad(c, to: widths[i]))
+            }
+            return "│ " + padded.joined(separator: " │ ") + " │"
+        }
+        let dashes = widths.map { String(repeating: "─", count: $0) }
+        let topBorder    = "┌─" + dashes.joined(separator: "─┬─") + "─┐"
+        let sepBorder    = "├─" + dashes.joined(separator: "─┼─") + "─┤"
+        let bottomBorder = "└─" + dashes.joined(separator: "─┴─") + "─┘"
+
+        var lines: [String] = [topBorder, renderRow(headCells), sepBorder]
+        for row in bodyRows { lines.append(renderRow(row)) }
+        lines.append(bottomBorder)
+
+        let str = lines.joined(separator: "\n")
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: monoFont(ctx.fontScale),
+            .foregroundColor: NSColor.labelColor,
+        ]
+        return NSAttributedString(string: str, attributes: attrs)
+    }
+
+    /// Cell plain text can contain wrapped whitespace from inline markup; collapse
+    /// to single spaces and trim so column widths line up cleanly.
+    private static func collapseWhitespace(_ s: String) -> String {
+        s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }
 
     private static func appendBlock(_ s: NSAttributedString,

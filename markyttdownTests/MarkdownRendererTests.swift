@@ -129,6 +129,35 @@ final class NSAttributedMarkdownTests: XCTestCase {
         XCTAssertEqual(urls.count, 1)
     }
 
+    func testTableRendersHeadAndBody() {
+        let src = """
+        | a | b | c |
+        |---|---|---|
+        | 1 | 2 | 3 |
+        | 4 | 5 | 6 |
+        """
+        let s = NSAttributedMarkdown.render(src)
+        XCTAssertTrue(s.string.contains("┌"))
+        XCTAssertTrue(s.string.contains("┘"))
+        XCTAssertTrue(s.string.contains("│ a │ b │ c │"))
+        XCTAssertTrue(s.string.contains("│ 1 │ 2 │ 3 │"))
+        XCTAssertTrue(s.string.contains("│ 4 │ 5 │ 6 │"))
+        // The whole table should be monospaced.
+        let font = s.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        XCTAssertTrue(font?.fontName.lowercased().contains("mono") ?? false)
+    }
+
+    func testTablePadsColumnsToMaxWidth() {
+        let src = """
+        | name | role |
+        |------|------|
+        | very-long-name | x |
+        """
+        let s = NSAttributedMarkdown.render(src)
+        // "very-long-name" is 14 chars; header "name" is 4. Header row should be padded.
+        XCTAssertTrue(s.string.contains("│ name           │"))
+    }
+
     func testReplaceAttachment() {
         let storage = NSTextStorage(attributedString: NSAttributedMarkdown.render(
             "![cat](https://example.com/cat.png)"
