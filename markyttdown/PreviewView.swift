@@ -1,6 +1,24 @@
 import SwiftUI
 import AppKit
 
+@MainActor
+private func makeTK1TextView() -> NSTextView {
+    // On macOS 14+ this initializer explicitly opts out of TextKit 2.
+    if #available(macOS 14.0, *) {
+        return NSTextView(usingTextLayoutManager: false)
+    }
+    // Fallback: construct the full TK1 stack by hand.
+    let storage = NSTextStorage()
+    let layout = NSLayoutManager()
+    storage.addLayoutManager(layout)
+    let container = NSTextContainer(
+        containerSize: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+    )
+    container.widthTracksTextView = true
+    layout.addTextContainer(container)
+    return NSTextView(frame: .zero, textContainer: container)
+}
+
 struct PreviewView: NSViewRepresentable {
     let text: String
     let baseURL: URL?
@@ -10,8 +28,14 @@ struct PreviewView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSTextView.scrollableTextView()
-        let tv = scroll.documentView as! NSTextView
+        // Build a TextKit 1 stack explicitly. Since macOS 14 the default text
+        // view uses TextKit 2, whose typesetter runs a per-cell statistical
+        // BIDI pass on NSTextTable — pathologically slow (30–60 s beachball
+        // on the corp Mac for a 10 kB doc with one table). TextKit 1's
+        // NSLayoutManager handles tables in single-digit ms and supports
+        // non-contiguous layout so only the visible portion is laid out
+        // synchronously.
+        let tv = makeTK1TextView()
         tv.isEditable = false
         tv.isSelectable = true
         tv.isRichText = true
@@ -28,9 +52,22 @@ struct PreviewView: NSViewRepresentable {
         tv.drawsBackground = false
         tv.allowsDocumentBackgroundColorChange = false
         tv.delegate = context.coordinator
+        tv.layoutManager?.allowsNonContiguousLayout = true
+        tv.isVerticallyResizable = true
+        tv.isHorizontallyResizable = false
+        tv.autoresizingMask = [.width]
+        tv.minSize = NSSize(width: 0, height: 0)
+        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        tv.textContainer?.widthTracksTextView = true
+        tv.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
 
-        scroll.drawsBackground = false
+        let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.documentView = tv
         scroll.contentView.postsBoundsChangedNotifications = true
 
         context.coordinator.scrollView = scroll
