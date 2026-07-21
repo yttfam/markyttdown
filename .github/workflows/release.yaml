@@ -69,3 +69,4 @@ jobs:
           files: |
             build/markyttdown-${{ steps.ver.outputs.marketing }}-${{ steps.ver.outputs.build }}.dmg
             build/markyttdown-${{ steps.ver.outputs.marketing }}-${{ steps.ver.outputs.build }}.pkg
+            build/markyttdown-${{ steps.ver.outputs.marketing }}-${{ steps.ver.outputs.build }}.zip

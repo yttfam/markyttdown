@@ -97,19 +97,42 @@ final class UpdateChecker {
         let cur = currentVersion()
         alert.messageText = "markyttdown \(release.tag_name) is available"
         alert.informativeText = "You're on \(cur.marketing) (build \(cur.build))."
-        alert.addButton(withTitle: "Download")
+        // Prefer the in-app installer when the release ships a .zip; otherwise
+        // fall back to opening the download page in the browser.
+        let zip = release.assets.first { $0.name.hasSuffix(".zip") }
+        let installButtonTitle = zip != nil ? "Install & Restart" : "Download"
+        alert.addButton(withTitle: installButtonTitle)
         alert.addButton(withTitle: "Skip This Version")
         alert.addButton(withTitle: "Later")
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            let dmg = release.assets.first { $0.name.hasSuffix(".dmg") }
-            let target = URL(string: dmg?.browser_download_url ?? release.html_url)
-                ?? URL(string: release.html_url)
-            if let target { NSWorkspace.shared.open(target) }
+            if let zip, let url = URL(string: zip.browser_download_url) {
+                Task { await downloadAndInstall(from: url) }
+            } else {
+                let dmg = release.assets.first { $0.name.hasSuffix(".dmg") }
+                let target = URL(string: dmg?.browser_download_url ?? release.html_url)
+                    ?? URL(string: release.html_url)
+                if let target { NSWorkspace.shared.open(target) }
+            }
         case .alertSecondButtonReturn:
             UserDefaults.standard.set(release.tag_name, forKey: skippedTagKey)
         default:
             break
+        }
+    }
+
+    private func downloadAndInstall(from url: URL) async {
+        do {
+            try await UpdateInstaller.downloadAndInstall(from: url)
+            // On success the installer script quits us — this line is
+            // reached only if something went wrong after that point.
+        } catch {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Couldn't install the update"
+            alert.informativeText = error.localizedDescription
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
         }
     }
 

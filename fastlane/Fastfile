@@ -159,8 +159,13 @@ platform :mac do
       sh("./scripts/notarize.sh", "build/markyttdown.app")
       sh("./scripts/make_dmg.sh", "build/markyttdown.app", "build/markyttdown-#{marketing}-#{build}.dmg")
       sh("./scripts/make_pkg.sh", "build/markyttdown.app", "build/markyttdown-#{marketing}-#{build}.pkg")
+      # .zip is the format the in-app auto-updater downloads. `ditto -ck --keepParent`
+      # is the only way to preserve HFS+ metadata and the stapled notarization ticket.
+      sh("/usr/bin/ditto", "-c", "-k", "--keepParent",
+         "build/markyttdown.app",
+         "build/markyttdown-#{marketing}-#{build}.zip")
     end
 
-    UI.success("Release artefacts in ./build/: .app, .dmg, .pkg (signed + notarized + stapled)")
+    UI.success("Release artefacts in ./build/: .app, .dmg, .pkg, .zip (signed + notarized + stapled)")
   end
 end
