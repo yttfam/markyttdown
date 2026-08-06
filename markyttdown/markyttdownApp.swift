@@ -29,6 +29,10 @@ struct MarkyttdownApp: App {
             CommandGroup(replacing: .printItem) {
                 PrintCommands()
             }
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                FindCommands()
+            }
             CommandGroup(after: .toolbar) {
                 LayoutCommands()
                 Divider()
@@ -51,6 +55,31 @@ private struct ZoomCommands: View {
         Button("Actual Size") { zoom?.actualSize() }
             .keyboardShortcut("0", modifiers: .command)
             .disabled(zoom == nil)
+    }
+}
+
+private struct FindCommands: View {
+    var body: some View {
+        Button("Find…") { fire(.showFindInterface) }
+            .keyboardShortcut("f", modifiers: .command)
+        Button("Find & Replace…") { fire(.showReplaceInterface) }
+            .keyboardShortcut("f", modifiers: [.command, .option])
+        Button("Find Next") { fire(.nextMatch) }
+            .keyboardShortcut("g", modifiers: .command)
+        Button("Find Previous") { fire(.previousMatch) }
+            .keyboardShortcut("g", modifiers: [.command, .shift])
+        Button("Use Selection for Find") { fire(.setSearchString) }
+            .keyboardShortcut("e", modifiers: .command)
+    }
+
+    private func fire(_ action: NSTextFinder.Action) {
+        let item = NSMenuItem()
+        item.tag = action.rawValue
+        NSApp.sendAction(
+            #selector(NSResponder.performTextFinderAction(_:)),
+            to: nil,
+            from: item
+        )
     }
 }
 

@@ -19,6 +19,8 @@ struct EditorView: NSViewRepresentable {
         )
         tv.textContainerInset = NSSize(width: 8, height: 8)
         tv.delegate = context.coordinator
+        tv.usesFindBar = true
+        tv.isIncrementalSearchingEnabled = true
         tv.string = text
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
