@@ -43,8 +43,8 @@ enum PreviewPrinter {
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.size = NSSize(width: contentWidth, height: .greatestFiniteMagnitude)
 
-        let attr = NSAttributedMarkdown.render(request.text, baseURL: request.baseURL)
-        textView.textStorage?.setAttributedString(attr)
+        let rendered = NSAttributedMarkdown.render(request.text, baseURL: request.baseURL)
+        textView.textStorage?.setAttributedString(rendered.attributed)
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         let usedHeight = textView.layoutManager?
             .usedRect(for: textView.textContainer!).height ?? contentWidth

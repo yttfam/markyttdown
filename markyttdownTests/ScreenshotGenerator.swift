@@ -78,8 +78,8 @@ final class ScreenshotGenerator: XCTestCase {
         tv.textContainerInset = NSSize(width: 16, height: 16)
         tv.textContainer?.widthTracksTextView = true
         tv.textContainer?.size = NSSize(width: width, height: .greatestFiniteMagnitude)
-        let attr = NSAttributedMarkdown.render(sampleMarkdown, baseURL: nil)
-        tv.textStorage?.setAttributedString(attr)
+        let rendered = NSAttributedMarkdown.render(sampleMarkdown, baseURL: nil)
+        tv.textStorage?.setAttributedString(rendered.attributed)
         sizeToFit(tv, width: width)
         return tv
     }

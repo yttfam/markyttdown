@@ -94,7 +94,10 @@ struct PreviewView: NSViewRepresentable {
         let parent: PreviewView
         weak var scrollView: NSScrollView?
         weak var textView: NSTextView?
-        private var suppressNotification = false
+        /// Suppress bounds-changed publishing until this instant. Covers both
+        /// the tween window in `applyExternalSync` and the initial re-layout
+        /// after `applyContent`.
+        private var suppressUntil: Date = .distantPast
         private var lastSource: String?
         private var lastBaseURL: URL?
         private var lastFontScale: Double = 0
@@ -102,15 +105,23 @@ struct PreviewView: NSViewRepresentable {
 
         init(_ parent: PreviewView) { self.parent = parent }
 
+        var rendered: RenderedMarkdown?
+
         func applyContent(text: String, baseURL: URL?, fontScale: Double) {
             if lastSource == text && lastBaseURL == baseURL && lastFontScale == fontScale { return }
             lastSource = text
             lastBaseURL = baseURL
             lastFontScale = fontScale
             guard let tv = textView, let storage = tv.textStorage else { return }
-            let rendered = NSAttributedMarkdown.render(text, baseURL: baseURL, fontScale: fontScale)
+            let r = NSAttributedMarkdown.render(text, baseURL: baseURL, fontScale: fontScale)
+            self.rendered = r
+            // Re-render invalidates scroll positions in this pane; suppress the
+            // bounds-changed notification the setAttributedString triggers so
+            // we don't re-publish source line 1 and yank the other pane back
+            // to the top.
+            suppressUntil = Date().addingTimeInterval(0.25)
             storage.beginEditing()
-            storage.setAttributedString(rendered)
+            storage.setAttributedString(r.attributed)
             storage.endEditing()
             scheduleRemoteImageFetches()
         }
@@ -135,18 +146,21 @@ struct PreviewView: NSViewRepresentable {
         }
 
         @objc func boundsChanged(_ note: Notification) {
-            guard !suppressNotification, let sv = scrollView else { return }
-            let p = ScrollSyncHelper.progress(of: sv)
+            guard Date() > suppressUntil,
+                  let tv = textView,
+                  let rendered else { return }
+            let charIdx = tv.topVisibleCharacterIndex()
+            let line = rendered.sourceLine(forAttrOffset: charIdx)
             parent.sync.owner = ObjectIdentifier(self)
-            parent.sync.progress = p
+            parent.sync.sourceLine = line
         }
 
         func applyExternalSync() {
-            guard let sv = scrollView else { return }
+            guard let tv = textView, let rendered else { return }
             if let owner = parent.sync.owner, owner == ObjectIdentifier(self) { return }
-            suppressNotification = true
-            ScrollSyncHelper.apply(progress: parent.sync.progress, to: sv)
-            Task { @MainActor [weak self] in self?.suppressNotification = false }
+            suppressUntil = Date().addingTimeInterval(0.20)
+            let target = rendered.attrOffset(forSourceLine: parent.sync.sourceLine)
+            tv.scrollCharacterToTop(target, animated: true)
         }
 
         // Open clicked links ourselves so .md sibling links route through our

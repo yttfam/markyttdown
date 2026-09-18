@@ -26,6 +26,7 @@ struct EditorView: NSViewRepresentable {
         scroll.drawsBackground = false
         scroll.contentView.postsBoundsChangedNotifications = true
         context.coordinator.scrollView = scroll
+        context.coordinator.textView = tv
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(Coordinator.boundsChanged(_:)),
@@ -52,7 +53,12 @@ struct EditorView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         let parent: EditorView
         weak var scrollView: NSScrollView?
-        private var suppressNotification = false
+        weak var textView: NSTextView?
+        /// Suppress bounds-changed publishing until this instant. Set by
+        /// `applyExternalSync` for the duration of the tween, so bounds
+        /// notifications fired by our own animation don't feed back into
+        /// the driver.
+        private var suppressUntil: Date = .distantPast
 
         init(_ parent: EditorView) { self.parent = parent }
 
@@ -62,18 +68,19 @@ struct EditorView: NSViewRepresentable {
         }
 
         @objc func boundsChanged(_ note: Notification) {
-            guard !suppressNotification, let sv = scrollView else { return }
-            let p = ScrollSyncHelper.progress(of: sv)
+            guard Date() > suppressUntil, let tv = textView else { return }
+            let charIdx = tv.topVisibleCharacterIndex()
+            let line = tv.string.lineNumber(forUTF16Offset: charIdx)
             parent.sync.owner = ObjectIdentifier(self)
-            parent.sync.progress = p
+            parent.sync.sourceLine = line
         }
 
         func applyExternalSync() {
-            guard let sv = scrollView else { return }
+            guard let tv = textView else { return }
             if let owner = parent.sync.owner, owner == ObjectIdentifier(self) { return }
-            suppressNotification = true
-            ScrollSyncHelper.apply(progress: parent.sync.progress, to: sv)
-            Task { @MainActor [weak self] in self?.suppressNotification = false }
+            suppressUntil = Date().addingTimeInterval(0.20) // tween 0.10 + buffer
+            let target = tv.string.utf16Offset(forLineNumber: parent.sync.sourceLine)
+            tv.scrollCharacterToTop(target, animated: true)
         }
     }
 }

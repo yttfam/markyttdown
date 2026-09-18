@@ -13,16 +13,25 @@ enum NSAttributedMarkdown {
     /// Synchronous render. Local file images load inline; remote (http/https)
     /// images appear as a "Loading…" placeholder attachment carrying their URL
     /// in `.markyttdownImageURL` so a follow-up pass can swap them in.
+    ///
+    /// The returned `RenderedMarkdown` also carries source-line anchors: each
+    /// top-level block records `(source_line, attr_offset_at_block_start)`
+    /// so scroll-sync can map between panes at line granularity.
     static func render(_ source: String,
                        baseURL: URL? = nil,
-                       fontScale: Double = 1.0) -> NSAttributedString {
+                       fontScale: Double = 1.0) -> RenderedMarkdown {
         let out = NSMutableAttributedString()
         let doc = Document(parsing: source)
         let ctx = RenderContext(baseURL: baseURL, fontScale: fontScale)
+        var anchors: [LineAnchor] = []
         for child in doc.children {
+            if let range = child.range {
+                anchors.append(LineAnchor(sourceLine: range.lowerBound.line,
+                                          attrOffset: out.length))
+            }
             renderBlock(child, into: out, ctx: ctx)
         }
-        return out
+        return RenderedMarkdown(attributed: out, anchors: anchors)
     }
 
     /// Collect the remote URLs whose images still need to be fetched. Caller
@@ -422,4 +431,43 @@ enum NSAttributedMarkdown {
 extension NSAttributedString.Key {
     /// Attached to image runs so async loaders can find and replace them.
     static let markyttdownImageURL = NSAttributedString.Key("markyttdown.image.url")
+}
+
+/// One point in the rendered output that a specific source line maps to.
+struct LineAnchor: Equatable {
+    /// 1-indexed line number in the original markdown source.
+    let sourceLine: Int
+    /// Character offset in the rendered `NSAttributedString`.
+    let attrOffset: Int
+}
+
+/// Result of rendering a markdown document.
+struct RenderedMarkdown {
+    let attributed: NSAttributedString
+    /// Sorted ascending by both `sourceLine` and `attrOffset` (by
+    /// construction — the renderer walks top-level blocks in document
+    /// order). Anchors mark block-level starts; sub-block content isn't
+    /// individually anchored.
+    let anchors: [LineAnchor]
+
+    /// Best-effort attr offset for a given source line. Uses the greatest
+    /// anchor whose sourceLine ≤ `line`; if the caller asks about a line
+    /// that falls inside a paragraph, they'll get the paragraph's start.
+    func attrOffset(forSourceLine line: Int) -> Int {
+        var best = 0
+        for a in anchors {
+            if a.sourceLine <= line { best = a.attrOffset } else { break }
+        }
+        return best
+    }
+
+    /// Best-effort source line for a given attr offset. Uses the greatest
+    /// anchor whose attrOffset ≤ `offset`.
+    func sourceLine(forAttrOffset offset: Int) -> Int {
+        var best = 1
+        for a in anchors {
+            if a.attrOffset <= offset { best = a.sourceLine } else { break }
+        }
+        return best
+    }
 }

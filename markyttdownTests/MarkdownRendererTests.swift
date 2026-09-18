@@ -5,21 +5,21 @@ import AppKit
 @MainActor
 final class NSAttributedMarkdownTests: XCTestCase {
     func testEmptyRendersEmpty() {
-        XCTAssertEqual(NSAttributedMarkdown.render("").length, 0)
+        XCTAssertEqual(NSAttributedMarkdown.render("").attributed.length, 0)
     }
 
     func testParagraphRendersText() {
-        let s = NSAttributedMarkdown.render("hello world")
+        let s = NSAttributedMarkdown.render("hello world").attributed
         XCTAssertEqual(s.string, "hello world")
     }
 
     func testHeadingRendersText() {
-        let s = NSAttributedMarkdown.render("# Title")
+        let s = NSAttributedMarkdown.render("# Title").attributed
         XCTAssertEqual(s.string, "Title")
     }
 
     func testHeadingIsBoldAndLarger() {
-        let s = NSAttributedMarkdown.render("# Big")
+        let s = NSAttributedMarkdown.render("# Big").attributed
         let font = s.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
         XCTAssertNotNil(font)
         XCTAssertGreaterThan(font!.pointSize, NSFont.systemFontSize)
@@ -27,13 +27,13 @@ final class NSAttributedMarkdownTests: XCTestCase {
     }
 
     func testBoldAndItalic() {
-        let s = NSAttributedMarkdown.render("**bold** *italic*")
+        let s = NSAttributedMarkdown.render("**bold** *italic*").attributed
         XCTAssertTrue(s.string.contains("bold"))
         XCTAssertTrue(s.string.contains("italic"))
     }
 
     func testInlineCode() {
-        let s = NSAttributedMarkdown.render("a `code` b")
+        let s = NSAttributedMarkdown.render("a `code` b").attributed
         let codeRange = (s.string as NSString).range(of: "code")
         let font = s.attribute(.font, at: codeRange.location, effectiveRange: nil) as? NSFont
         XCTAssertNotNil(font)
@@ -46,25 +46,25 @@ final class NSAttributedMarkdownTests: XCTestCase {
         let x = 1
         ```
         """
-        let s = NSAttributedMarkdown.render(src)
+        let s = NSAttributedMarkdown.render(src).attributed
         XCTAssertTrue(s.string.contains("let x = 1"))
     }
 
     func testListRendersBullets() {
-        let s = NSAttributedMarkdown.render("- one\n- two")
+        let s = NSAttributedMarkdown.render("- one\n- two").attributed
         XCTAssertTrue(s.string.contains("•"))
         XCTAssertTrue(s.string.contains("one"))
         XCTAssertTrue(s.string.contains("two"))
     }
 
     func testOrderedListRendersNumbers() {
-        let s = NSAttributedMarkdown.render("1. first\n2. second")
+        let s = NSAttributedMarkdown.render("1. first\n2. second").attributed
         XCTAssertTrue(s.string.contains("1."))
         XCTAssertTrue(s.string.contains("2."))
     }
 
     func testLinkAttributeSet() {
-        let s = NSAttributedMarkdown.render("[click](https://example.com)")
+        let s = NSAttributedMarkdown.render("[click](https://example.com)").attributed
         let range = (s.string as NSString).range(of: "click")
         XCTAssertGreaterThan(range.length, 0)
         let link = s.attribute(.link, at: range.location, effectiveRange: nil)
@@ -73,7 +73,7 @@ final class NSAttributedMarkdownTests: XCTestCase {
 
     func testRelativeLinkResolvedAgainstBaseURL() {
         let base = URL(fileURLWithPath: "/tmp/notes/index.md")
-        let s = NSAttributedMarkdown.render("[next](./chapter2.md)", baseURL: base)
+        let s = NSAttributedMarkdown.render("[next](./chapter2.md)", baseURL: base).attributed
         let range = (s.string as NSString).range(of: "next")
         let link = s.attribute(.link, at: range.location, effectiveRange: nil) as? URL
         XCTAssertNotNil(link)
@@ -96,7 +96,7 @@ final class NSAttributedMarkdownTests: XCTestCase {
         try data.write(to: URL(fileURLWithPath: imgPath))
 
         let doc = URL(fileURLWithPath: tmp + "/note.md")
-        let s = NSAttributedMarkdown.render("![cat](./cat.png)", baseURL: doc)
+        let s = NSAttributedMarkdown.render("![cat](./cat.png)", baseURL: doc).attributed
         var found = false
         s.enumerateAttribute(.attachment, in: NSRange(location: 0, length: s.length)) { value, _, _ in
             if value is NSTextAttachment { found = true }
@@ -105,13 +105,13 @@ final class NSAttributedMarkdownTests: XCTestCase {
     }
 
     func testRemoteImageRecorded() {
-        let s = NSAttributedMarkdown.render("![cat](https://example.com/cat.png)")
+        let s = NSAttributedMarkdown.render("![cat](https://example.com/cat.png)").attributed
         let urls = NSAttributedMarkdown.remoteImageURLs(in: s)
         XCTAssertEqual(urls.first?.absoluteString, "https://example.com/cat.png")
     }
 
     func testTextOnlyMarkdownHasNoAttachment() {
-        let s = NSAttributedMarkdown.render("# Hi\n\nhello")
+        let s = NSAttributedMarkdown.render("# Hi\n\nhello").attributed
         var found = false
         s.enumerateAttribute(.attachment, in: NSRange(location: 0, length: s.length)) { value, _, _ in
             if value is NSTextAttachment { found = true }
@@ -122,7 +122,7 @@ final class NSAttributedMarkdownTests: XCTestCase {
     func testMixedParagraphKeepsTextAndImageSeparate() {
         let s = NSAttributedMarkdown.render(
             "before ![alt](https://x/y.png) after"
-        )
+        ).attributed
         XCTAssertTrue(s.string.contains("before"))
         XCTAssertTrue(s.string.contains("after"))
         let urls = NSAttributedMarkdown.remoteImageURLs(in: s)
@@ -136,7 +136,7 @@ final class NSAttributedMarkdownTests: XCTestCase {
         | 1 | 2 | 3 |
         | 4 | 5 | 6 |
         """
-        let s = NSAttributedMarkdown.render(src)
+        let s = NSAttributedMarkdown.render(src).attributed
         let str = s.string
         XCTAssertTrue(str.contains("a"))
         XCTAssertTrue(str.contains("b"))
@@ -151,7 +151,7 @@ final class NSAttributedMarkdownTests: XCTestCase {
         |---|---|
         | 1 | 2 |
         """
-        let s = NSAttributedMarkdown.render(src)
+        let s = NSAttributedMarkdown.render(src).attributed
         var blockCount = 0
         s.enumerateAttribute(.paragraphStyle,
                              in: NSRange(location: 0, length: s.length)) { value, _, _ in
@@ -169,7 +169,7 @@ final class NSAttributedMarkdownTests: XCTestCase {
         |------|
         | body |
         """
-        let s = NSAttributedMarkdown.render(src)
+        let s = NSAttributedMarkdown.render(src).attributed
         let headRange = (s.string as NSString).range(of: "head")
         XCTAssertGreaterThan(headRange.length, 0)
         let font = s.attribute(.font, at: headRange.location, effectiveRange: nil) as? NSFont
@@ -178,10 +178,63 @@ final class NSAttributedMarkdownTests: XCTestCase {
                       "Expected header weight ≥ semibold; got \(NSFontManager.shared.weight(of: font!))")
     }
 
+    // MARK: - Line anchors (scroll sync)
+
+    func testAnchorsRecordEachTopLevelBlock() {
+        let src = """
+        # Title
+
+        First paragraph.
+
+        Second paragraph.
+
+        ## Subhead
+
+        More text.
+        """
+        let r = NSAttributedMarkdown.render(src)
+        // 4 top-level blocks: title, para 1, para 2, subhead, para 3 = 5
+        XCTAssertEqual(r.anchors.count, 5)
+        // Anchors should be sorted ascending by source line and by attr offset.
+        for (a, b) in zip(r.anchors, r.anchors.dropFirst()) {
+            XCTAssertLessThan(a.sourceLine, b.sourceLine)
+            XCTAssertLessThan(a.attrOffset, b.attrOffset)
+        }
+        // First anchor always at line 1 → attr offset 0.
+        XCTAssertEqual(r.anchors.first?.sourceLine, 1)
+        XCTAssertEqual(r.anchors.first?.attrOffset, 0)
+    }
+
+    func testAttrOffsetLookupUsesGreatestAnchorAtOrBelowLine() {
+        let src = """
+        # A
+
+        # B
+
+        # C
+        """
+        let r = NSAttributedMarkdown.render(src)
+        // Lines: 1=A, 3=B, 5=C. Ask for line 4 → get B's offset (line 3).
+        let offsetForLine4 = r.attrOffset(forSourceLine: 4)
+        let offsetForLine3 = r.attrOffset(forSourceLine: 3)
+        XCTAssertEqual(offsetForLine4, offsetForLine3)
+    }
+
+    func testSourceLineReverseLookup() {
+        let src = "# A\n\n# B\n\n# C"
+        let r = NSAttributedMarkdown.render(src)
+        // Character 0 → line 1.
+        XCTAssertEqual(r.sourceLine(forAttrOffset: 0), 1)
+        // Offset past the last anchor still returns the last anchor's line.
+        let last = r.anchors.last!
+        XCTAssertEqual(r.sourceLine(forAttrOffset: last.attrOffset + 100),
+                       last.sourceLine)
+    }
+
     func testReplaceAttachment() {
         let storage = NSTextStorage(attributedString: NSAttributedMarkdown.render(
             "![cat](https://example.com/cat.png)"
-        ))
+        ).attributed)
         let url = URL(string: "https://example.com/cat.png")!
         XCTAssertEqual(NSAttributedMarkdown.remoteImageURLs(in: storage), [url])
 
